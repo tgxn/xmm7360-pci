@@ -1,18 +1,18 @@
-#include <fcntl.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
+#include "xmm7360.h"
+#include <arpa/inet.h>
 #include <assert.h>
-#include <sys/ioctl.h>
-#include <sys/select.h>
+#include <fcntl.h>
 #include <linux/if.h>
 #include <linux/if_tun.h>
 #include <linux/ioctl.h>
-#include <arpa/inet.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/select.h>
 #include <time.h>
-#include "xmm7360.h"
+#include <unistd.h>
 
 int max_frame, max_packets_per_frame;
 
@@ -89,7 +89,8 @@ int frame_add_tag(uint32_t tag, void *data, int data_len)
 		frame.last_tag_next = &hdr->next;
 		frame.n_bytes += sizeof(struct first_header);
 	} else {
-		struct next_header *hdr = (struct next_header *)(&frame.data[frame.n_bytes]);
+		struct next_header *hdr =
+			(struct next_header *)(&frame.data[frame.n_bytes]);
 		memset(hdr, 0, sizeof(struct next_header));
 		hdr->tag = htonl(tag);
 		hdr->length = total_length;
@@ -125,7 +126,8 @@ int frame_append_packet(void *data, int data_len)
 	if (frame.n_packets >= max_packets_per_frame)
 		return -1;
 
-	int expected_adth_size = sizeof(struct next_header) + 4 + (frame.n_packets+1)*sizeof(struct bounds);
+	int expected_adth_size = sizeof(struct next_header) + 4 +
+				 (frame.n_packets + 1) * sizeof(struct bounds);
 
 	if (frame.n_bytes + data_len + 16 + expected_adth_size > max_frame)
 		return -1;
@@ -170,14 +172,15 @@ int frame_append_adth(void)
 	ret = frame_add_tag('ADTH', &unknown, sizeof(uint32_t));
 	if (ret)
 		return ret;
-	ret = frame_append_data(&frame.bounds[0], sizeof(struct bounds)*frame.n_packets);
+	ret = frame_append_data(&frame.bounds[0],
+				sizeof(struct bounds) * frame.n_packets);
 	return ret;
 }
 
 void frame_complete(void)
 {
 	// first tag gets the total length
-	struct first_header *hdr = (void*)&frame.data[0];
+	struct first_header *hdr = (void *)&frame.data[0];
 	hdr->length = frame.n_bytes;
 }
 
@@ -197,16 +200,15 @@ static int tun_alloc(void)
 	struct ifreq ifr;
 	int fd, ret;
 
-	if ( (fd = open("/dev/net/tun", O_RDWR)) < 0 ) {
+	if ((fd = open("/dev/net/tun", O_RDWR)) < 0) {
 		perror("tun open");
 		exit(1);
 	}
 
-
 	memset(&ifr, 0, sizeof(ifr));
 	ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
 
-	ret = ioctl(fd, TUNSETIFF, (void*)&ifr);
+	ret = ioctl(fd, TUNSETIFF, (void *)&ifr);
 	if (ret < 0) {
 		close(fd);
 		return ret;
@@ -224,23 +226,25 @@ static void handle_mux_frame(int mux, int tun)
 		exit(1);
 	}
 
-	struct first_header *first = (void*)inbuf;
+	struct first_header *first = (void *)inbuf;
 	if (ntohl(first->tag) != 'ADBH') {
 		printf("Unexpected tag %x\n", first->tag);
 		return;
 	}
 
-	struct next_header *adth = (void*)(&inbuf[first->next]);
+	struct next_header *adth = (void *)(&inbuf[first->next]);
 	if (ntohl(adth->tag) != 'ADTH') {
 		printf("Unexpected ADTH tag %x\n", adth->tag);
 		return;
 	}
 
-	int n_packets = (adth->length - sizeof(struct next_header) - 4) / sizeof(struct bounds);
+	int n_packets = (adth->length - sizeof(struct next_header) - 4) /
+			sizeof(struct bounds);
 
-	struct bounds *bounds = (void*)&inbuf[first->next + sizeof(struct next_header) + 4];
+	struct bounds *bounds =
+		(void *)&inbuf[first->next + sizeof(struct next_header) + 4];
 
-	for (int i=0; i<n_packets; i++)
+	for (int i = 0; i < n_packets; i++)
 		write(tun, &inbuf[bounds[i].offset], bounds[i].length);
 }
 
@@ -293,7 +297,7 @@ int main(int argc, char **argv)
 
 	int tun = tun_alloc();
 
-	uint32_t cmdh_args[] = {1, 0, 0, 0};
+	uint32_t cmdh_args[] = { 1, 0, 0, 0 };
 	frame_init();
 	frame_add_tag('ACBH', NULL, 0);
 	frame_add_tag('CMDH', cmdh_args, sizeof(cmdh_args));
@@ -320,16 +324,18 @@ int main(int argc, char **argv)
 			tv.tv_sec = frame.deadline.tv_sec - now.tv_sec;
 			if (now.tv_nsec > frame.deadline.tv_nsec) {
 				tv.tv_sec -= 1;
-				tv.tv_usec = (frame.deadline.tv_nsec/1000) + 1000000 - (now.tv_nsec/1000);
+				tv.tv_usec = (frame.deadline.tv_nsec / 1000) +
+					     1000000 - (now.tv_nsec / 1000);
 			} else {
-				tv.tv_usec = (frame.deadline.tv_nsec/1000) - (now.tv_nsec/1000);
+				tv.tv_usec = (frame.deadline.tv_nsec / 1000) -
+					     (now.tv_nsec / 1000);
 			}
 			ptv = &tv;
 		} else {
 			ptv = NULL;
 		}
 
-		int ret = select(fd_max+1, &fds, NULL, NULL, ptv);
+		int ret = select(fd_max + 1, &fds, NULL, NULL, ptv);
 		if (ret < 0) {
 			perror("select");
 			exit(1);
@@ -342,7 +348,7 @@ int main(int argc, char **argv)
 			handle_tun_frame(tun, mux);
 
 		if (ptv && !tv.tv_usec && frame.n_packets) {
-frame_out:
+		frame_out:
 			frame_append_adth();
 			frame_push(mux);
 			frame_add_tag('ADBH', NULL, 0);
